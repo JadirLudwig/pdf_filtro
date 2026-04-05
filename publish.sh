@@ -8,9 +8,9 @@ git add .
 git commit -m "update: Atualização de formato TXT"
 # git push -u origin main
 
-echo "=== Publicando no DockerHub (saviogl/pdf-cleaner) ==="
+echo "=== Publicando no DockerHub (ludwig91/pdf_filtro) ==="
 # docker login  # Descomente e faça login caso ainda não tenha autenticado seu CLI
-docker build -t saviogl/pdf-cleaner:latest .
-docker push saviogl/pdf-cleaner:latest
+docker build -t ludwig91/pdf_filtro:latest .
+docker push ludwig91/pdf_filtro:latest
 
 echo "✅ Deploy Concluído!"
