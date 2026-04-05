@@ -1,0 +1,8 @@
+[
+    {"origem": " v.", "destino": " versículo"},
+    {"origem": " cap.", "destino": " capítulo"},
+    {"origem": " S. ", "destino": " São "},
+    {"origem": " Sta. ", "destino": " Santa "},
+    {"origem": " sr.", "destino": " senhor"},
+    {"origem": " obs.", "destino": " observação"}
+]

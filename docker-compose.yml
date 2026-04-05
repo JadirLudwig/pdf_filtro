@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  pdf-cleaner:
+    build: .
+    container_name: pdf-cleaner-app
+    ports:
+      - "8501:8501"
+    volumes:
+      - .:/app
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: pdf-cleaner-tunnel
+    # Usando o modo trycloudflare (grátis / dinamico) que redireciona à porta 8501 interna
+    command: tunnel --url http://pdf-cleaner:8501
+    restart: unless-stopped
+    depends_on:
+      - pdf-cleaner
