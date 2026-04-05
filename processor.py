@@ -21,6 +21,32 @@ def parse_page_ranges(range_str):
             pages.add(int(part))
     return pages
 
+def get_font_stats(pdf_stream, ignore_pages_str=""):
+    """
+    Analisa o PDF e retorna um dicionário de tamanhos de fonte encontrados
+    e um exemplo de texto para cada.
+    """
+    doc = fitz.open(stream=pdf_stream, filetype="pdf")
+    pages_to_ignore = parse_page_ranges(ignore_pages_str)
+    stats = {}
+    
+    for page_idx, page in enumerate(doc):
+        if (page_idx + 1) in pages_to_ignore:
+            continue
+            
+        blocks = page.get_text("dict", flags=11).get("blocks", [])
+        for b in blocks:
+            for l in b.get("lines", []):
+                for s in l.get("spans", []):
+                    size = round(s["size"], 1)
+                    text = s["text"].strip()
+                    if text:
+                        if size not in stats:
+                            stats[size] = {"count": 0, "sample": text[:30]}
+                        stats[size]["count"] += len(text)
+    doc.close()
+    return stats
+
 def clean_text(text, abbreviations, is_title, inject_title_pauses, inject_normal_pauses):
     # Regex substitutions for abbreviations
     for item in abbreviations:
@@ -43,7 +69,7 @@ def clean_text(text, abbreviations, is_title, inject_title_pauses, inject_normal
         
     return text
 
-def process_pdf(pdf_stream, top_margin_perc, bottom_margin_perc, abbreviations, inject_title_pauses, inject_normal_pauses, ignore_pages_str="", force_pages_str="", output_format="pdf"):
+def process_pdf(pdf_stream, top_margin_perc, bottom_margin_perc, abbreviations, inject_title_pauses, inject_normal_pauses, ignore_pages_str="", force_pages_str="", output_format="pdf", allowed_font_sizes=None):
     """
     Realiza o parse do PDF injetado via streamlit.
     Detecta fontes, limpa o texto baseando se a linha é título/capítulo
@@ -73,9 +99,9 @@ def process_pdf(pdf_stream, top_margin_perc, bottom_margin_perc, abbreviations, 
         current_page_num = page_idx + 1
         
         if current_page_num in pages_to_ignore:
-            continue # Pula completamente esta página (ex: sumários, índice)
+            continue 
             
-        bypass_margins = current_page_num in pages_to_force # Se forçar, não recorta margens
+        bypass_margins = current_page_num in pages_to_force 
         
         page_height = page.rect.height
         clip_top = page_height * (top_margin_perc / 100.0)
@@ -83,24 +109,29 @@ def process_pdf(pdf_stream, top_margin_perc, bottom_margin_perc, abbreviations, 
         
         blocks = page.get_text("dict", flags=11).get("blocks", [])
         for b in blocks:
-            # Check bounding box (b["bbox"] = [x0, y0, x1, y1])
             y0, y1 = b["bbox"][1], b["bbox"][3]
             
             if not bypass_margins:
                 if y1 < clip_top or y0 > clip_bottom:
-                    continue # Ignora rodapés e cabeçalhos
+                    continue 
             
-            # Percorre linhas do bloco
             for l in b.get("lines", []):
                 line_text = ""
                 line_is_title = False
                 
                 for s in l.get("spans", []):
                     txt = s["text"]
-                    sz = s["size"]
+                    sz = round(s["size"], 1)
                     
-                    # Checamos também se é bold (flag 16 no bit 4, no fitz antigo flag 2, mas tamanho é o mais confiavel)
-                    # Alguns fonts podem nomear Bold e setar flag. Mais seguro é checar o size absoluto.
+                    # Filtro 1: Se o usuário restringiu tamanhos de fonte
+                    if allowed_font_sizes is not None and sz not in allowed_font_sizes:
+                        continue
+
+                    # Filtro 2: Remoção automática de sobrescritos numéricos
+                    # (Se o tamanho for menor que o corpo e for apenas número)
+                    if sz < (median_size - 1.0) and txt.strip().isdigit():
+                        continue
+                    
                     if sz >= title_threshold:
                         line_is_title = True
                         

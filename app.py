@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import json
 import os
-from processor import process_pdf
+from processor import process_pdf, get_font_stats
 
 st.set_page_config(page_title="PDF Cleaner", layout="wide")
 
@@ -56,21 +56,52 @@ with col_config:
             
     with st.expander("Formato Final de Exportação", expanded=True):
         output_format = st.radio("Selecione o formato desejado:", ["TXT", "PDF"], index=0, help="O TXT é ideal e preferível para ingerir direto no Livros Narrados e em outros I.As. O PDF serve para leitura humana.")
+
+    # Novo: Seletor de Estilos de Fonte
+    st.header("🎨 Filtro de Estilo (Fontes)")
+    st.write("Selecione quais tamanhos de texto manter. Desmarque tamanhos pequenos para ignorar notas de rodapé.")
+    
+    font_weights = {}
+    if 'font_stats' not in st.session_state:
+        st.session_state.font_stats = None
+
+    uploaded_file = st.file_uploader("Selecione um Arquivo PDF Bruto", type=["pdf"], accept_multiple_files=False)
+    
+    if uploaded_file:
+        if st.session_state.font_stats is None or st.session_state.last_uploaded != uploaded_file.name:
+            with st.spinner("Analisando estilos do PDF..."):
+                file_bytes = uploaded_file.read()
+                st.session_state.font_stats = get_font_stats(file_bytes, ignore_pages)
+                st.session_state.last_uploaded = uploaded_file.name
+                st.session_state.file_bytes = file_bytes # Store to avoid re-reading
+        
+        if st.session_state.font_stats:
+            # Ordenar por contagem de caracteres (mais frequentes primeiro)
+            sorted_fonts = sorted(st.session_state.font_stats.items(), key=lambda x: x[1]['count'], reverse=True)
+            
+            allowed_sizes = []
+            for size, data in sorted_fonts:
+                label = f"{size}pt (Ex: '{data['sample']}...')"
+                # Por padrão, marcar se for maior ou igual a 9pt (tamanho comum de corpo/título)
+                default_val = size >= 9.0
+                if st.checkbox(label, value=default_val, key=f"font_{size}"):
+                    allowed_sizes.append(size)
+            
+            st.session_state.allowed_sizes = allowed_sizes
         
 with col_main:
-    st.header("📄 Enviar & Processar")
-    uploaded_files = st.file_uploader("Selecione um Arquivo PDF Bruto", type=["pdf"], accept_multiple_files=False)
+    st.header("📄 Processar")
     
-    if uploaded_files and st.button("Tratar Arquivo", type="primary"):
+    if uploaded_file and st.button("Tratar Arquivo", type="primary"):
         abrev_lista = edited_df.to_dict('records')
         
-        st.write(f"⏳ Otimizando **{uploaded_files.name}**...")
+        st.write(f"⏳ Otimizando **{uploaded_file.name}**...")
         try:
-            # Read streaming bytes
-            file_bytes = uploaded_files.read()
+            # Use stored bytes
+            file_bytes = st.session_state.file_bytes
             
             # Execute
-            new_pdf = process_pdf(
+            new_file = process_pdf(
                 file_bytes, 
                 top_margin, 
                 bottom_margin, 
@@ -79,7 +110,8 @@ with col_main:
                 inject_normal_pauses,
                 ignore_pages_str=ignore_pages,
                 force_pages_str=force_pages,
-                output_format=output_format.lower()
+                output_format=output_format.lower(),
+                allowed_font_sizes=st.session_state.get('allowed_sizes', None)
             )
             
             # Provide fresh File
@@ -91,7 +123,7 @@ with col_main:
             
             st.download_button(
                 label=f"⬇️ Baixar NOVO {orig_name}.{ext}",
-                data=new_pdf,
+                data=new_file,
                 file_name=f"limpo_{orig_name}.{ext}",
                 mime=mime_t,
                 use_container_width=True
