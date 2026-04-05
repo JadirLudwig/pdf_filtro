@@ -80,11 +80,16 @@ with col_config:
             sorted_fonts = sorted(st.session_state.font_stats.items(), key=lambda x: x[1]['count'], reverse=True)
             
             allowed_sizes = []
-            for size, data in sorted_fonts:
+            
+            # Criando colunas para os filtros de fonte não ocuparem muito espaço vertical
+            f_col1, f_col2 = st.columns(2)
+            for idx, (size, data) in enumerate(sorted_fonts):
                 label = f"{size}pt (Ex: '{data['sample']}...')"
-                # Por padrão, marcar se for maior ou igual a 9pt (tamanho comum de corpo/título)
                 default_val = size >= 9.0
-                if st.checkbox(label, value=default_val, key=f"font_{size}"):
+                
+                # Alternar entre as colunas
+                target_col = f_col1 if idx % 2 == 0 else f_col2
+                if target_col.checkbox(label, value=default_val, key=f"font_{size}"):
                     allowed_sizes.append(size)
             
             st.session_state.allowed_sizes = allowed_sizes
@@ -119,7 +124,7 @@ with col_main:
             
             ext = output_format.lower()
             mime_t = "application/pdf" if ext == "pdf" else "text/plain"
-            orig_name = uploaded_files.name.rsplit('.', 1)[0]
+            orig_name = uploaded_file.name.rsplit('.', 1)[0]
             
             st.download_button(
                 label=f"⬇️ Baixar NOVO {orig_name}.{ext}",
