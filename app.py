@@ -22,50 +22,50 @@ def save_abreviacoes(data):
         json.dump(data, f, ensure_ascii=False, indent=4)
 
 st.title("🧽 PDF Cleaner & Scraper")
-st.markdown("Pré-processador inteligente de eBooks. Extrai texto de PDFs, aplica expansão de abreviaturas e re-injeta marcadores visuais para melhor leitura no TTS do *Livros Narrados*.")
+st.markdown("Pré-processador inteligente de eBooks. Extrai texto de PDFs, aplica expansão de abreviaturas e re-injeta marcadores visuais.")
 
-# Layout
+# --- SEÇÃO DE UPLOAD (TOPO) ---
+st.header("📄 1. Enviar Arquivo")
+uploaded_file = st.file_uploader("Selecione um Arquivo PDF Bruto", type=["pdf"], accept_multiple_files=False)
+
+# Inicializar estados de sessão
+if 'font_stats' not in st.session_state:
+    st.session_state.font_stats = None
+if 'last_uploaded' not in st.session_state:
+    st.session_state.last_uploaded = None
+
+# Layout de Colunas para Configurações e Filtros
 col_config, col_main = st.columns([1, 2])
 
+# Variáveis globais para os text_inputs (precisam existir antes do botão processar)
 with col_config:
-    st.header("⚙️ Configurações")
+    st.header("⚙️ 2. Ajustes de Limpeza")
     
-    with st.expander("Controle Analítico de Páginas", expanded=True):
-        st.write("Especifique páginas por número (ex: 1, 3, 5-7).")
-        ignore_pages = st.text_input("🚫 Ignorar Páginas (removidas do PDF final)", help="Use isto para sumários ou notas do autor que devem ser ignoradas na narração.")
-        force_pages = st.text_input("✅ Forçar Extração de Páginas", help="Força a ignorar o corte das margens nestas páginas, para capturar o texto todo se ele estiver batendo no rodapé/cabeçalho.")
+    with st.expander("Controle de Páginas", expanded=True):
+        ignore_pages = st.text_input("🚫 Ignorar Páginas", help="Ex: 1, 3, 5-7")
+        force_pages = st.text_input("✅ Forçar Extração", help="Ignora cortes nessas páginas")
     
-    with st.expander("Margens de Corte (Cabeçalhos)", expanded=True):
-        st.write("Corte as regiões da página que possuem numeração ou nome da editora recorrente.")
-        top_margin = st.slider("Margem Superior a ignorar (%)", 0, 30, 8)
-        bottom_margin = st.slider("Margem Inferior a ignorar (%)", 0, 30, 10)
+    with st.expander("Cortes de Margem", expanded=False):
+        top_margin = st.slider("Margem Superior (%)", 0, 30, 8)
+        bottom_margin = st.slider("Margem Inferior (%)", 0, 30, 10)
     
-    with st.expander("Estratégia de Pausas", expanded=True):
-        inject_title_pauses = st.toggle("Pausar em Títulos/Capítulos", value=True, help="Detecta textos grandes via IA e coloca um '.' no final se não haver, forçando o TTS a dar uma pausa no cap.")
-        inject_normal_pauses = st.toggle("Pausas Extras no Corpo do Texto", value=False, help="Injeta quebras duplas ao encontrar '; ' ou '. ', prolongando o silêncio nos pontos finais.")
+    with st.expander("Estratégia de Pausas", expanded=False):
+        inject_title_pauses = st.toggle("Pausa em Capítulos", value=True)
+        inject_normal_pauses = st.toggle("Pausas Extras no Corpo", value=False)
     
-    with st.expander("Tabela: Expansor de Abreviação", expanded=True):
+    with st.expander("Expansor de Abreviação", expanded=False):
         df_abrev = pd.DataFrame(load_abreviacoes())
-        if df_abrev.empty:
-            df_abrev = pd.DataFrame(columns=["origem", "destino"])
-            
+        if df_abrev.empty: df_abrev = pd.DataFrame(columns=["origem", "destino"])
         edited_df = st.data_editor(df_abrev, num_rows="dynamic", use_container_width=True)
-        if st.button("Salvar Tabela", use_container_width=True):
+        if st.button("Salvar Tabela"):
             save_abreviacoes(edited_df.to_dict('records'))
-            st.success("Tabela salva!")
+            st.success("Salvo!")
             
-    with st.expander("Formato Final de Exportação", expanded=True):
-        output_format = st.radio("Selecione o formato desejado:", ["TXT", "PDF"], index=0, help="O TXT é ideal e preferível para ingerir direto no Livros Narrados e em outros I.As. O PDF serve para leitura humana.")
+    with st.expander("Exportação", expanded=True):
+        output_format = st.radio("Formato:", ["TXT", "PDF"], index=0)
 
-    # Novo: Seletor de Estilos de Fonte
-    st.header("🎨 Filtro de Estilo (Fontes)")
-    st.write("Selecione quais tamanhos de texto manter. Desmarque tamanhos pequenos para ignorar notas de rodapé.")
-    
-    font_weights = {}
-    if 'font_stats' not in st.session_state:
-        st.session_state.font_stats = None
-
-    uploaded_file = st.file_uploader("Selecione um Arquivo PDF Bruto", type=["pdf"], accept_multiple_files=False)
+with col_main:
+    st.header("🎨 3. Análise de Estilos")
     
     if uploaded_file:
         if st.session_state.font_stats is None or st.session_state.last_uploaded != uploaded_file.name:
@@ -73,66 +73,69 @@ with col_config:
                 file_bytes = uploaded_file.read()
                 st.session_state.font_stats = get_font_stats(file_bytes, ignore_pages)
                 st.session_state.last_uploaded = uploaded_file.name
-                st.session_state.file_bytes = file_bytes # Store to avoid re-reading
+                st.session_state.file_bytes = file_bytes
         
         if st.session_state.font_stats:
-            # Ordenar por contagem de caracteres (mais frequentes primeiro)
-            sorted_fonts = sorted(st.session_state.font_stats.items(), key=lambda x: x[1]['count'], reverse=True)
+            stats = st.session_state.font_stats
+            sorted_fonts = sorted(stats.items(), key=lambda x: x[1]['count'], reverse=True)
             
+            # --- DETECÇÃO AUTOMÁTICA ---
+            primary_font = sorted_fonts[0][0] # Mais frequente
+            
+            # Capítulo: Maior fonte que tenha pelo menos 100 caracteres no livro
+            potential_titles = [s for s, d in stats.items() if s > primary_font and d['count'] > 50]
+            chapter_font = max(potential_titles) if potential_titles else primary_font
+            
+            # Display em Caixas Curtas
+            c1, c2 = st.columns(2)
+            c1.success(f"**Corpo do Texto:** {primary_font}pt")
+            if chapter_font != primary_font:
+                c2.info(f"**Títulos/Capítulos:** {chapter_font}pt")
+            
+            st.write("Selecione os estilos para manter no arquivo final:")
             allowed_sizes = []
-            
-            # Criando colunas para os filtros de fonte não ocuparem muito espaço vertical
             f_col1, f_col2 = st.columns(2)
+            
             for idx, (size, data) in enumerate(sorted_fonts):
-                label = f"{size}pt (Ex: '{data['sample']}...')"
-                default_val = size >= 9.0
+                label = f"**{size}pt** - Ex: *{data['sample'][:60]}...*"
+                # Sugestão inteligente: marcar se for corpo ou capítulo
+                is_suggested = (size == primary_font or size == chapter_font)
                 
-                # Alternar entre as colunas
                 target_col = f_col1 if idx % 2 == 0 else f_col2
-                if target_col.checkbox(label, value=default_val, key=f"font_{size}"):
+                if target_col.checkbox(label, value=is_suggested, key=f"font_{size}"):
                     allowed_sizes.append(size)
             
             st.session_state.allowed_sizes = allowed_sizes
-        
-with col_main:
-    st.header("📄 Processar")
+
+    st.divider()
     
-    if uploaded_file and st.button("Tratar Arquivo", type="primary"):
-        abrev_lista = edited_df.to_dict('records')
-        
-        st.write(f"⏳ Otimizando **{uploaded_file.name}**...")
+    # Botão de Processar agora no final da coluna Main (mais visível após config)
+    if uploaded_file and st.button("🚀 TRATAR E LIMPAR ARQUIVO", type="primary", use_container_width=True):
         try:
-            # Use stored bytes
-            file_bytes = st.session_state.file_bytes
-            
-            # Execute
-            new_file = process_pdf(
-                file_bytes, 
-                top_margin, 
-                bottom_margin, 
-                abrev_lista, 
-                inject_title_pauses, 
-                inject_normal_pauses,
-                ignore_pages_str=ignore_pages,
-                force_pages_str=force_pages,
-                output_format=output_format.lower(),
-                allowed_font_sizes=st.session_state.get('allowed_sizes', None)
-            )
-            
-            # Provide fresh File
-            st.success(f"✔️ Processo computado com sucesso! Arquivo {output_format} otimizado pronto para narrações.")
+            with st.status("Processando...", expanded=True) as status:
+                st.write("Lendo bytes...")
+                file_bytes = st.session_state.file_bytes
+                st.write("Executando limpeza profunda...")
+                
+                new_file = process_pdf(
+                    file_bytes, top_margin, bottom_margin, 
+                    edited_df.to_dict('records'),
+                    inject_title_pauses, inject_normal_pauses,
+                    ignore_pages_str=ignore_pages,
+                    force_pages_str=force_pages,
+                    output_format=output_format.lower(),
+                    allowed_font_sizes=st.session_state.get('allowed_sizes', None)
+                )
+                status.update(label="✅ Concluído!", state="complete")
             
             ext = output_format.lower()
-            mime_t = "application/pdf" if ext == "pdf" else "text/plain"
             orig_name = uploaded_file.name.rsplit('.', 1)[0]
-            
             st.download_button(
-                label=f"⬇️ Baixar NOVO {orig_name}.{ext}",
+                label=f"⬇️ BAIXAR {orig_name.upper()}.{ext}",
                 data=new_file,
                 file_name=f"limpo_{orig_name}.{ext}",
-                mime=mime_t,
+                mime="application/pdf" if ext == "pdf" else "text/plain",
                 use_container_width=True
             )
-            
         except Exception as e:
-            st.error(f"Erro ao processar: {str(e)}")
+            st.error(f"Erro: {str(e)}")

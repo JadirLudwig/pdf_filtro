@@ -42,7 +42,7 @@ def get_font_stats(pdf_stream, ignore_pages_str=""):
                     text = s["text"].strip()
                     if text:
                         if size not in stats:
-                            stats[size] = {"count": 0, "sample": text[:30]}
+                            stats[size] = {"count": 0, "sample": text[:100]}
                         stats[size]["count"] += len(text)
     doc.close()
     return stats
