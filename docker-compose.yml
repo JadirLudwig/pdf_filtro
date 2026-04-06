@@ -3,6 +3,7 @@ version: '3.8'
 services:
   pdf-cleaner:
     build: .
+    image: ludwig91/pdf_filtro:latest
     container_name: pdf-cleaner-app
     ports:
       - "8501:8501"
